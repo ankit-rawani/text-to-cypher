@@ -54,8 +54,19 @@ class Pipeline:
         trace_id = uuid.uuid4().hex[:12]
         question = request.question
         schema = self._schema.get()
-        grounding = self._grounder.ground(question, schema)
-        examples = self._examples.retrieve(question)
+        # Grounding and example retrieval are optional enrichments — a transient
+        # vector-store/embedder failure degrades gracefully rather than crashing.
+        degraded: list[str] = []
+        try:
+            grounding = self._grounder.ground(question, schema)
+        except Exception as exc:
+            grounding = GroundingResult()
+            degraded.append(f"grounding unavailable ({exc})")
+        try:
+            examples = self._examples.retrieve(question)
+        except Exception as exc:
+            examples = []
+            degraded.append(f"examples unavailable ({exc})")
 
         attempts: list[GenerationAttempt] = []
         validations: list[ValidationReport] = []
@@ -74,13 +85,26 @@ class Pipeline:
 
         for attempt_no in range(1, max_attempts + 1):
             if attempt_no == 1:
-                gen_attempt, _ = self._generator.generate(question, schema, grounding, examples, attempt_no)
+                gen_attempt, gen_error = self._call_generator(
+                    lambda: self._generator.generate(question, schema, grounding, examples, attempt_no),
+                    attempt_no, "generate",
+                )
             else:
-                gen_attempt, _ = self._generator.repair(
-                    question, schema, grounding, examples, prev_cypher, failure_errors, failure_kind, attempt_no
+                gen_attempt, gen_error = self._call_generator(
+                    lambda: self._generator.repair(
+                        question, schema, grounding, examples, prev_cypher, failure_errors, failure_kind, attempt_no
+                    ),
+                    attempt_no, "repair",
                 )
             attempts.append(gen_attempt)
             prev_cypher = gen_attempt.cypher
+
+            if gen_error is not None:
+                # The LLM call itself failed (network/parse) — surface it in the
+                # trace and reflect on it, rather than crashing.
+                failure_kind = "generation"
+                failure_errors = [gen_error]
+                continue
 
             report = self._validator.validate(
                 gen_attempt.cypher, gen_attempt.params, schema, grounding, row_cap=row_cap
@@ -114,18 +138,32 @@ class Pipeline:
             if execution.status == "empty":
                 return self._handle_empty(
                     question, schema, grounding, examples, final_cypher, gen_attempt.params,
-                    attempts, validations, executions, trace_id, allow_relax, row_cap, timeout, attempt_no,
+                    attempts, validations, executions, trace_id, allow_relax, row_cap, timeout,
+                    attempt_no, max_attempts,
                 )
             # error / timeout -> reflect and repair
             failure_kind = "execution"
             failure_errors = [execution.error_message or f"execution {execution.status}"]
             prev_cypher = final_cypher
 
+        tail = f" Last error: {failure_errors[0]}" if failure_errors else ""
         return self._response(
             "failed", None, prev_cypher or None, attempts[-1].params if attempts else None,
             attempts, validations, executions, grounding, trace_id,
-            message=f"Exhausted {max_attempts} attempt(s) without a successful query.",
+            message=f"Exhausted {max_attempts} attempt(s) without a successful query.{tail}",
         )
+
+    def _call_generator(self, fn, attempt_no: int, kind: str):
+        """Run a generator call, converting any exception into a traced failure."""
+        try:
+            attempt, _ = fn()
+            return attempt, None
+        except Exception as exc:
+            attempt = GenerationAttempt(
+                attempt=attempt_no, cypher="", params={},
+                reasoning=f"GENERATION_ERROR: {type(exc).__name__}: {exc}", kind=kind,
+            )
+            return attempt, f"Generator/LLM error: {type(exc).__name__}: {exc}"
 
     # ------------------------------------------------------------------
     def _handle_empty(
@@ -144,12 +182,19 @@ class Pipeline:
         row_cap: int,
         timeout: float,
         attempt_no: int,
+        max_attempts: int,
     ) -> PipelineResponse:
-        if allow_relax and (attempt_no + 1) <= self._hard_max:
-            relax_attempt, _ = self._generator.relax(
-                question, schema, grounding, examples, empty_cypher, attempt_no + 1
+        # The single relaxation counts as a generation and respects the caller's
+        # effective attempt budget (and the hard cap).
+        can_relax = allow_relax and (attempt_no + 1) <= min(max_attempts, self._hard_max)
+        relax_attempt, relax_error = (None, None)
+        if can_relax:
+            relax_attempt, relax_error = self._call_generator(
+                lambda: self._generator.relax(question, schema, grounding, examples, empty_cypher, attempt_no + 1),
+                attempt_no + 1, "relax",
             )
             attempts.append(relax_attempt)
+        if relax_attempt is not None and relax_error is None:
             report = self._validator.validate(
                 relax_attempt.cypher, relax_attempt.params, schema, grounding, row_cap=row_cap
             )

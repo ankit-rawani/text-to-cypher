@@ -72,6 +72,10 @@ class NodePattern:
     end: int
     sig_open: int
     sig_close: int
+    # Inline map entries with simple string literal values, e.g.
+    # ``(n:Concept {node_type: 'Drug'})`` -> {"node_type": "Drug"}. Used by the
+    # relationship-direction autofix to discriminate endpoints by node_type.
+    prop_values: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -200,24 +204,33 @@ def _label_name(tok: Token) -> str:
 # --------------------------------------------------------------------------
 
 
-def _map_keys(sig: list[Token], open_idx: int, bracket: dict[int, int]) -> list[str]:
+def _map_entries(sig: list[Token], open_idx: int, bracket: dict[int, int]) -> tuple[list[str], dict[str, str]]:
+    """Return (all keys, {key: string-literal-value}) for a ``{...}`` map."""
     close = bracket.get(open_idx)
     if close is None:
-        return []
+        return [], {}
     keys: list[str] = []
+    values: dict[str, str] = {}
     depth = 0
     p = open_idx + 1
     while p < close:
         tok = sig[p]
         if depth == 0 and tok.type in (IDENT, QUOTED_IDENT, STRING):
             if p + 1 < close and sig[p + 1].type == PUNCT and sig[p + 1].value == ":":
-                keys.append(tok.decoded if tok.decoded is not None else tok.value)
+                key = tok.decoded if tok.decoded is not None else tok.value
+                keys.append(key)
+                if p + 2 < close and sig[p + 2].type == STRING and sig[p + 2].decoded is not None:
+                    values[key] = sig[p + 2].decoded
         if tok.type == PUNCT and tok.value in _OPEN:
             depth += 1
         elif tok.type == PUNCT and tok.value in _CLOSE:
             depth -= 1
         p += 1
-    return keys
+    return keys, values
+
+
+def _map_keys(sig: list[Token], open_idx: int, bracket: dict[int, int]) -> list[str]:
+    return _map_entries(sig, open_idx, bracket)[0]
 
 
 def _parse_node(sig: list[Token], open_idx: int, bracket: dict[int, int]) -> NodePattern | None:
@@ -229,6 +242,7 @@ def _parse_node(sig: list[Token], open_idx: int, bracket: dict[int, int]) -> Nod
     var: str | None = None
     labels: list[str] = []
     prop_keys: list[str] = []
+    prop_values: dict[str, str] = {}
 
     # optional variable
     if idx < close and sig[idx].type in (IDENT, QUOTED_IDENT):
@@ -247,7 +261,7 @@ def _parse_node(sig: list[Token], open_idx: int, bracket: dict[int, int]) -> Nod
 
     # optional property map
     if idx < close and sig[idx].type == PUNCT and sig[idx].value == "{":
-        prop_keys = _map_keys(sig, idx, bracket)
+        prop_keys, prop_values = _map_entries(sig, idx, bracket)
         map_close = bracket.get(idx)
         if map_close is None:
             return None
@@ -267,6 +281,7 @@ def _parse_node(sig: list[Token], open_idx: int, bracket: dict[int, int]) -> Nod
         end=sig[close].end,
         sig_open=open_idx,
         sig_close=close,
+        prop_values=prop_values,
     )
 
 
@@ -422,12 +437,21 @@ def analyze(source: str) -> Analysis:
         if depths[idx] == 0 and tok.type == IDENT and tok.upper in CLAUSE_KEYWORDS:
             analysis.clauses.append((tok.upper, tok.start))
 
-    # Write ops (any depth; not a property access, not back-quoted)
+    # Write ops — only in genuine clause position. A write KEYWORD that appears
+    # as a property access, a map/property key, a label/rel-type name, or an
+    # alias is NOT a mutation and must not trigger a (terminal) WRITE_OP reject.
     for idx, tok in enumerate(sig):
         if tok.type == IDENT and tok.upper in WRITE_KEYWORDS:
             prev = sig[idx - 1] if idx > 0 else None
+            nxt = sig[idx + 1] if idx + 1 < len(sig) else None
             if prev is not None and prev.type == PUNCT and prev.value == ".":
-                continue  # property/namespace access
+                continue  # property / namespace access:  n.create
+            if nxt is not None and nxt.type == PUNCT and nxt.value == ":":
+                continue  # map / property key:  {create: ...}  ,  , set: ...
+            if prev is not None and prev.type == PUNCT and prev.value in (":", "|"):
+                continue  # label / rel-type name:  (:CREATE)  [:SET]  n:CREATE
+            if prev is not None and prev.type == IDENT and prev.upper == "AS":
+                continue  # alias:  RETURN x AS set
             analysis.write_ops.append(WriteOp(tok.upper, tok.start))
 
     # Params
@@ -438,23 +462,26 @@ def analyze(source: str) -> Analysis:
     # String literals
     analysis.string_literals = [t for t in sig if t.type == STRING]
 
-    # Calls: dotted-name run immediately followed by '('  -> function/proc
+    # Calls: dotted-name run immediately followed by '('  -> function/proc.
+    # QUOTED_IDENT (back-quoted) segments count too, and are decoded — otherwise
+    # `apoc`.text.join(...) or `apoc.text.join`(...) would evade the denylist.
+    name_tok = (IDENT, QUOTED_IDENT)
     n = len(sig)
     for idx, tok in enumerate(sig):
-        if tok.type != IDENT:
+        if tok.type not in name_tok:
             continue
-        if tok.upper in RESERVED_NONCALL:
+        if tok.type == IDENT and tok.upper in RESERVED_NONCALL:
             continue  # clause/logical keywords are not call names
         # start of a dotted name only if not preceded by '.'
         prev = sig[idx - 1] if idx > 0 else None
         if prev is not None and prev.type == PUNCT and prev.value == ".":
             continue
         j = idx
-        parts = [tok.value]
-        while j + 2 < n and sig[j + 1].type == PUNCT and sig[j + 1].value == "." and sig[j + 2].type == IDENT:
-            parts.append(sig[j + 2].value)
+        parts = [_label_name(tok)]
+        while j + 2 < n and sig[j + 1].type == PUNCT and sig[j + 1].value == "." and sig[j + 2].type in name_tok:
+            parts.append(_label_name(sig[j + 2]))
             j += 2
-        if j + 1 < n and sig[j + 1].type == PUNCT and sig[j + 1].value == "(" and len(parts) >= 1:
+        if j + 1 < n and sig[j + 1].type == PUNCT and sig[j + 1].value == "(":
             # a bare single-word call like count( is a function; keep dotted ones too
             analysis.calls.append(CallRef(".".join(parts), tok.start, is_procedure=False))
 
@@ -463,10 +490,10 @@ def analyze(source: str) -> Analysis:
         if tok.type == IDENT and tok.upper == "CALL":
             if idx + 1 < n and not (sig[idx + 1].type == PUNCT and sig[idx + 1].value == "{"):
                 j = idx + 1
-                if sig[j].type == IDENT:
-                    parts = [sig[j].value]
-                    while j + 2 < n and sig[j + 1].type == PUNCT and sig[j + 1].value == "." and sig[j + 2].type == IDENT:
-                        parts.append(sig[j + 2].value)
+                if sig[j].type in name_tok:
+                    parts = [_label_name(sig[j])]
+                    while j + 2 < n and sig[j + 1].type == PUNCT and sig[j + 1].value == "." and sig[j + 2].type in name_tok:
+                        parts.append(_label_name(sig[j + 2]))
                         j += 2
                     analysis.calls.append(CallRef(".".join(parts), sig[idx + 1].start, is_procedure=True))
 
@@ -599,31 +626,79 @@ def flip_direction(source: str, rel: RelPattern) -> str:
     return source[:start] + lead + new_core + trail + source[end:]
 
 
-def ensure_limit(source: str, row_cap: int, analysis: Analysis) -> tuple[str, str | None]:
-    """Inject or clamp a final ``LIMIT``.
+def _branch_limits(sig: list[Token], depths: list[int]) -> list[LimitInfo]:
+    """Per top-level UNION branch: RETURN presence, LIMIT info, and inject point.
 
-    Returns (new_source, action) where action is ``"injected"``, ``"clamped"``,
-    or ``None`` (already within cap / not applicable).
+    ``num_start`` doubles as the char offset to inject ` LIMIT n` (the end of the
+    branch's last significant, non-``;`` token) when no LIMIT is present.
     """
-    limit = analysis.limit
-    if limit.present:
-        if limit.is_literal and limit.value is not None and limit.value > row_cap:
-            assert limit.num_start is not None and limit.num_end is not None
-            new = source[: limit.num_start] + str(row_cap) + source[limit.num_end:]
-            return new, "clamped"
+    union_idxs = [i for i, t in enumerate(sig) if depths[i] == 0 and t.type == IDENT and t.upper == "UNION"]
+    bounds: list[tuple[int, int]] = []
+    start = 0
+    for u in union_idxs:
+        bounds.append((start, u))
+        start = u + 1
+    bounds.append((start, len(sig)))
+
+    branches: list[LimitInfo] = []
+    for s, e in bounds:
+        info = LimitInfo()
+        return_idxs = [i for i in range(s, e) if depths[i] == 0 and sig[i].type == IDENT and sig[i].upper == "RETURN"]
+        if not return_idxs:
+            branches.append(info)
+            continue
+        info.return_exists = True
+        last_return = max(return_idxs)
+        for i in range(last_return + 1, e):
+            if depths[i] == 0 and sig[i].type == IDENT and sig[i].upper == "LIMIT":
+                info.present = True
+                if i + 1 < e and sig[i + 1].type == NUMBER:
+                    try:
+                        info.is_literal = True
+                        info.value = int(sig[i + 1].value)
+                        info.num_start = sig[i + 1].start
+                        info.num_end = sig[i + 1].end
+                    except ValueError:
+                        info.is_literal = False
+                break
+        if not info.present:
+            # inject point = end of the branch's last significant, non-';' token
+            for i in range(e - 1, s - 1, -1):
+                if not (sig[i].type == PUNCT and sig[i].value == ";"):
+                    info.num_start = sig[i].end
+                    break
+        branches.append(info)
+    return branches
+
+
+def ensure_limit(source: str, row_cap: int, analysis: Analysis) -> tuple[str, str | None]:
+    """Inject or clamp a ``LIMIT`` on every top-level UNION branch.
+
+    Returns (new_source, action) where action is ``"clamped"``, ``"injected"``,
+    or ``None``. Edits are applied right-to-left so char offsets stay valid, and
+    injection lands before any trailing comment / ``;`` so it is never inert.
+    """
+    branches = _branch_limits(analysis.sig, _depths(analysis.sig))
+    edits: list[tuple[int, int, str]] = []
+    clamped = injected = False
+    for b in branches:
+        if not b.return_exists:
+            continue
+        if b.present:
+            if b.is_literal and b.value is not None and b.value > row_cap:
+                assert b.num_start is not None and b.num_end is not None
+                edits.append((b.num_start, b.num_end, str(row_cap)))
+                clamped = True
+        elif b.num_start is not None:
+            edits.append((b.num_start, b.num_start, f" LIMIT {row_cap}"))
+            injected = True
+
+    if not edits:
         return source, None
-
-    if not limit.return_exists:
-        return source, None  # nothing sensible to limit
-
-    core = source.rstrip()
-    tail_ws = source[len(core):]
-    if core.endswith(";"):
-        body = core[:-1].rstrip()
-        new = body + f" LIMIT {row_cap};" + tail_ws
-    else:
-        new = core + f" LIMIT {row_cap}" + tail_ws
-    return new, "injected"
+    out = source
+    for s, e, text in sorted(edits, key=lambda x: x[0], reverse=True):
+        out = out[:s] + text + out[e:]
+    return out, ("clamped" if clamped else "injected")
 
 
 __all__ = [

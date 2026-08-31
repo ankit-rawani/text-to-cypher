@@ -179,8 +179,17 @@ class EntityGrounder:
             key = ent.node_id or (ent.canonical_name or "").lower()
             if key and key in seen_nodes:
                 continue
-            # skip a mention that is a substring of an already-kept mention
-            if any(ent.mention.lower() in k.mention.lower() and ent.mention.lower() != k.mention.lower() for k in kept):
+            # Skip a mention that is a substring of an already-kept mention ONLY
+            # when they resolve to the same node (or this one is unresolved).
+            # Distinct nodes whose mentions overlap ("Tesla" vs "Tesla Motors")
+            # must both be kept so each gets a bound param.
+            ml = ent.mention.lower()
+            if any(
+                ml in k.mention.lower()
+                and ml != k.mention.lower()
+                and (k.node_id == ent.node_id or ent.node_id is None)
+                for k in kept
+            ):
                 continue
             if key:
                 seen_nodes.add(key)

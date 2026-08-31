@@ -69,6 +69,8 @@ class SchemaContext(BaseModel):
     enums: dict[str, list[str]] = Field(default_factory=dict)
     # Optional connectivity triples (start_label, rel_type, end_label).
     edges: list[tuple[str, str, str]] = Field(default_factory=list)
+    # The node property that discriminates node kind (used by direction autofix).
+    node_type_property: str = "node_type"
 
 
 class ExamplePair(BaseModel):

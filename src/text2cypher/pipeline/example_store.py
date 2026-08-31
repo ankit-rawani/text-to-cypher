@@ -8,6 +8,7 @@ feedback gate (:meth:`add`).
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -34,7 +35,6 @@ class ExampleStore:
         self._threshold = sim_threshold
         self._enabled = enabled
         self._store.ensure_collection(collection, embedder.dim)
-        self._next_id = 1
 
     def retrieve(self, question: str) -> list[ExamplePair]:
         if not self._enabled or self._top_k <= 0:
@@ -54,6 +54,13 @@ class ExampleStore:
             )
         return pairs
 
+    @staticmethod
+    def _point_id(question: str) -> int:
+        # Content-stable id: re-adding the same question is idempotent, and
+        # distinct questions get distinct ids (so separate processes / imports
+        # accumulate instead of clobbering ids 1, 2, ...).
+        return int(hashlib.sha1(question.encode("utf-8")).hexdigest()[:15], 16)
+
     def add(self, pairs: list[ExamplePair]) -> int:
         """Upsert example pairs (question embedded as the vector). Returns count."""
         points: list[VectorPoint] = []
@@ -61,12 +68,11 @@ class ExampleStore:
             vector = self._embedder.embed_one(pair.question)
             points.append(
                 VectorPoint(
-                    id=self._next_id,
+                    id=self._point_id(pair.question),
                     vector=vector,
                     payload={"question": pair.question, "cypher": pair.cypher, "tags": pair.tags},
                 )
             )
-            self._next_id += 1
         if points:
             self._store.upsert(self._collection, points)
         return len(points)

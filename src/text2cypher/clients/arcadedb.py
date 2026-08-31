@@ -82,8 +82,9 @@ class ArcadeDBClient:
         *,
         timeout_s: float | None = None,
         limit: int | None = None,
+        language: str | None = None,
     ) -> list[dict[str, Any]]:
-        payload: dict[str, Any] = {"language": self._language, "command": cypher}
+        payload: dict[str, Any] = {"language": language or self._language, "command": cypher}
         if params:
             payload["params"] = params
         if limit is not None:
@@ -118,7 +119,7 @@ class ArcadeDBClient:
     def introspect(self) -> dict[str, Any]:
         """Best-effort live schema introspection via ArcadeDB's schema view."""
         try:
-            rows = self.query("SELECT FROM schema:types", limit=10_000)
+            rows = self.query("SELECT FROM schema:types", limit=10_000, language="sql")
         except Exception:  # pragma: no cover - depends on server
             return {}
         return {"types": rows}

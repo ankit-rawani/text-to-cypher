@@ -93,6 +93,7 @@ class SchemaProvider:
             version_hash=version_hash,
             enums=enums,
             edges=edges,
+            node_type_property=cfg.node_type_property,
         )
 
     def _render(
