@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "text2cypher"
+version = "0.1.0"
+description = "NL question -> grounded, validated, guarded Cypher over an ArcadeDB concept graph"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "text2cypher contributors" }]
+keywords = ["cypher", "text2cypher", "arcadedb", "knowledge-graph", "llm", "qdrant"]
+
+dependencies = [
+    "pydantic>=2.5",
+    "httpx>=0.27",
+    "PyYAML>=6.0",
+    "typer>=0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+]
+
+[project.scripts]
+t2c = "text2cypher.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+text2cypher = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["text2cypher"]
+branch = true

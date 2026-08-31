@@ -1,0 +1,36 @@
+# ArcadeDB openCypher dialect denylist (spec section 3, check 2).
+#
+# The validator rejects any query that references these. This file is meant to
+# GROW from production errors — when a construct fails at the database with a
+# dialect error, add it here so the validator catches it earlier and cheaper.
+#
+# Three match modes:
+#   procedure_prefixes : dotted call/function name STARTS WITH the prefix
+#                        (case-insensitive). Catches whole namespaces.
+#   functions          : dotted or bare call/function name EQUALS the entry
+#                        (case-insensitive).
+#   clauses            : a bare keyword / phrase appearing as a token
+#                        (case-insensitive, whole-word). Use sparingly — most
+#                        write clauses are already blocked by the write-op check.
+
+procedure_prefixes:
+  - apoc.        # APOC library — Neo4j only
+  - db.          # db.* introspection/index procedures — Neo4j only
+  - dbms.        # dbms.* admin procedures — Neo4j only
+  - gds.         # Graph Data Science library — Neo4j only
+  - cypher.      # cypher.* runtime procedures — Neo4j only
+  - spatial.     # neo4j-spatial — Neo4j only
+  - algo.        # legacy graph algorithms — Neo4j only
+
+functions:
+  # Neo4j-only / not in ArcadeDB's openCypher subset. Grows from prod errors.
+  - randomUUID
+  - percentileCont
+  - percentileDisc
+  - point
+  - distance
+
+clauses:
+  # Constructs in ArcadeDB's ~2% openCypher TCK gap that are read-side.
+  # (Write clauses such as FOREACH / LOAD CSV are handled by the write-op check.)
+  []

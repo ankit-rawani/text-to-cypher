@@ -1,0 +1,73 @@
+# User-configured graph schema for the concept graph.
+# Edit these to match YOUR ArcadeDB schema — SchemaProvider renders this (merged
+# with optional live introspection) into the prompt-facing schema context.
+
+database: concept_graph
+
+node_labels:
+  - Concept
+
+node_type_property: node_type
+node_type_values:
+  - Disease
+  - Drug
+  - Gene
+  - Protein
+  - Phenotype
+  - Pathway
+  - Method
+  - Dataset
+  - Field
+  - Concept
+
+node_properties:
+  canonical_name: string
+  aliases: list<string>
+  node_type: string
+  definition: string
+  field_tags: list<string>
+  confidence: float
+
+relationships:
+  - type: RELATES_TO
+    description: generic association between concepts
+  - type: CAUSES
+    start: [Disease, Gene, Drug]
+    end: [Disease, Phenotype]
+    description: causal link
+  - type: TREATS
+    start: [Drug]
+    end: [Disease, Phenotype]
+    description: therapeutic effect
+  - type: ASSOCIATED_WITH
+    description: statistical / observed association
+  - type: PART_OF
+    description: mereological / hierarchical containment
+  - type: SUBTYPE_OF
+    description: taxonomic specialization
+  - type: MEASURED_BY
+    start: [Phenotype, Disease]
+    end: [Method, Dataset]
+    description: measurement / assay
+  - type: INTERACTS_WITH
+    start: [Gene, Protein, Drug]
+    end: [Gene, Protein, Drug]
+    directed: false
+    description: interaction
+
+edge_properties:
+  relationship: string
+  evidence_dois: list<string>
+  status: string
+  directed: boolean
+  rationale: string
+
+status_property: status
+status_values:
+  - proposed
+  - supported
+  - refuted
+  - deprecated
+
+descriptions:
+  Concept: A scientific concept / entity in the knowledge graph.
