@@ -65,6 +65,25 @@ def test_anthropic_send_temperature_opt_in():
     assert seen["body"]["temperature"] == 0.0
 
 
+def test_openai_temperature_gated_by_send_temperature():
+    seen = {}
+
+    def handler(req):
+        seen["body"] = json.loads(req.content)
+        return httpx.Response(200, json={"choices": [{"message": {"content": "x"}}]})
+
+    # default: temperature omitted (some models reject non-default values)
+    OpenAIChatClient("http://x/v1", "m", client=_mock(handler)).complete(
+        [{"role": "user", "content": "hi"}], temperature=0.0
+    )
+    assert "temperature" not in seen["body"]
+    # opt-in: temperature sent
+    OpenAIChatClient("http://x/v1", "m", send_temperature=True, client=_mock(handler)).complete(
+        [{"role": "user", "content": "hi"}], temperature=0.0
+    )
+    assert seen["body"]["temperature"] == 0.0
+
+
 def test_anthropic_refusal_raises():
     def handler(req):
         return httpx.Response(200, json={"stop_reason": "refusal", "stop_details": {"category": "cyber", "explanation": "no"}, "content": []})

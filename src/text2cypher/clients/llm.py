@@ -18,6 +18,8 @@ class OpenAIChatClient:
         api_key: str = "",
         timeout_s: float = 60.0,
         client: httpx.Client | None = None,
+        *,
+        send_temperature: bool = False,
     ) -> None:
         if not endpoint:
             raise ConfigurationError("LLM endpoint is required")
@@ -27,6 +29,7 @@ class OpenAIChatClient:
         self._model = model
         self._api_key = api_key
         self._timeout = timeout_s
+        self._send_temperature = send_temperature
         self._client = client or httpx.Client(timeout=timeout_s)
 
     @classmethod
@@ -37,6 +40,7 @@ class OpenAIChatClient:
             api_key=config.api_key,
             timeout_s=config.timeout_s,
             client=client,
+            send_temperature=config.send_temperature,
         )
 
     def complete(
@@ -54,9 +58,12 @@ class OpenAIChatClient:
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": messages,
-            "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        # Some models (e.g. GPT-5-era) reject any non-default temperature; only
+        # send it when explicitly enabled (config send_temperature).
+        if self._send_temperature:
+            payload["temperature"] = temperature
         if response_format is not None:
             payload["response_format"] = response_format
         resp = self._client.post(
