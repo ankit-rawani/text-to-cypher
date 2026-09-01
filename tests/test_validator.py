@@ -135,6 +135,18 @@ def test_direction_autofix():
     assert "<-[:TREATS]-" in r.final_cypher
 
 
+def test_unbound_param_rejected(validator, schema):
+    r = validator.validate("MATCH (n:Concept) WHERE n.canonical_name = $g RETURN n.canonical_name", {}, schema)
+    assert not r.passed and "UNBOUND_PARAM" in codes(r)
+
+
+def test_bound_param_passes(validator, schema):
+    r = validator.validate(
+        "MATCH (n:Concept) WHERE n.canonical_name = $g RETURN n.canonical_name", {"g": "x"}, schema
+    )
+    assert r.passed, codes(r)
+
+
 def test_direction_ambiguous_not_touched():
     schema = SchemaProvider(default_graph_config()).get()
     v = Validator(Denylist(), row_cap=200)

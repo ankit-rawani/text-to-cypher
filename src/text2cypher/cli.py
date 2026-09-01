@@ -112,7 +112,8 @@ def validate(
     graph_config = load_graph_config(cfg.resolve_path(cfg.graph_config_path))
     schema = SchemaProvider(graph_config).get()
     validator = Validator(load_denylist(cfg.resolve_path(cfg.dialect.denylist_path)), row_cap=cfg.pipeline.row_cap)
-    report = validator.validate(cypher, {}, schema)
+    # A standalone query file is a template — don't flag $params as unbound.
+    report = validator.validate(cypher, {}, schema, check_unbound_params=False)
 
     color = typer.colors.GREEN if report.passed else typer.colors.RED
     typer.secho(f"passed: {report.passed}", fg=color, bold=True)

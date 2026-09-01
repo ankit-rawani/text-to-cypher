@@ -43,7 +43,7 @@ def test_harness_scores_and_strata(sample_nodes):
     fp.graph.add_rule(lambda c, p: "TREATS" not in c, lambda c, p: [])
 
     gold = [
-        GoldItem(id="ok", stratum="1-hop", question="drugs for T2DM",
+        GoldItem(id="ok", stratum="1-hop", question="Which drugs treat Type 2 Diabetes Mellitus?",
                  cypher="MATCH (drug:Concept)-[:TREATS]->(d:Concept) WHERE d.canonical_name=$n RETURN drug.canonical_name AS drug",
                  params={"n": "Type 2 Diabetes Mellitus"}),
         GoldItem(id="oog", stratum="out-of-graph", question="unrelated",

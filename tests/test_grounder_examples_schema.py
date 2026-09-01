@@ -20,6 +20,16 @@ def test_extract_mentions_quoted_and_capitalized():
     assert "metformin" in joined
 
 
+def test_generic_single_words_not_extracted():
+    # meta/schema words must not become standalone mentions (they ground to
+    # nodes that merely contain them -> spurious params).
+    m = [x.lower() for x in extract_mentions("How many relationships of each type, and which methods and processes?")]
+    for w in ("relationships", "type", "methods", "processes"):
+        assert w not in m, w
+    # real single-word entities still survive
+    assert "metformin" in [x.lower() for x in extract_mentions("Tell me about Metformin")]
+
+
 # ---- grounder -----------------------------------------------------------
 
 

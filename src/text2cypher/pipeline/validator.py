@@ -101,6 +101,7 @@ class Validator:
         grounding: GroundingResult | None = None,
         *,
         row_cap: int | None = None,
+        check_unbound_params: bool = True,
     ) -> ValidationReport:
         cap = row_cap if row_cap is not None else self._row_cap
         issues: list[ValidationIssue] = []
@@ -159,6 +160,25 @@ class Validator:
         schema_issues = self._schema_issues(a, schema)
         if schema_issues:
             issues.extend(schema_issues)
+            return ValidationReport(passed=False, issues=issues, final_cypher=cypher, terminal=False)
+
+        # 4b. Unbound parameters — every $param referenced must be provided,
+        # else the query fails at the DB with an opaque error. Skipped when
+        # validating a standalone query template (no binding context).
+        provided = set((params or {}).keys())
+        unbound = sorted(p for p in a.params if p not in provided)
+        if check_unbound_params and unbound:
+            issues.append(
+                ValidationIssue(
+                    code="UNBOUND_PARAM",
+                    severity="reject",
+                    detail=(
+                        "Query references undeclared parameter(s): "
+                        + ", ".join("$" + p for p in unbound)
+                        + ". Provide them in params_used or remove them."
+                    ),
+                )
+            )
             return ValidationReport(passed=False, issues=issues, final_cypher=cypher, terminal=False)
 
         # 5. Relationship direction (autofix)

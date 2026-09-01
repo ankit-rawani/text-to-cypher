@@ -34,6 +34,19 @@ _STOPWORDS = {
     "as", "it", "its", "their", "there", "each", "some", "most", "more",
 }
 
+# Generic / schema-structural words that are not entities. Dropped ONLY as a
+# standalone single-word mention (multi-word phrases that contain them survive),
+# so we don't ground "relationships"/"type"/"method" to a node that merely
+# contains the word — which produces spurious $params that mislead weak models.
+_GENERIC = {
+    "relationship", "relationships", "type", "types", "kind", "kinds",
+    "effect", "effects", "method", "methods", "property", "properties",
+    "process", "processes", "model", "models", "phenomenon", "phenomena",
+    "thing", "things", "item", "items", "name", "names", "value", "values",
+    "result", "results", "number", "numbers", "pair", "pairs", "group", "groups",
+}
+_DROP_SINGLE = _STOPWORDS | _GENERIC
+
 MentionExtractor = Callable[[str], "list[str]"]
 
 
@@ -48,6 +61,9 @@ def extract_mentions(question: str, max_candidates: int = 40) -> list[str]:
             return
         key = m.lower()
         if key in seen:
+            return
+        # Drop a bare generic/stopword single-word mention (keep multi-word).
+        if " " not in m and key in _DROP_SINGLE:
             return
         seen.add(key)
         ordered.append(m)
