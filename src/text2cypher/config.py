@@ -30,12 +30,18 @@ DEFAULT_CONFIG_PATH = _REPO_ROOT / "config" / "default.yaml"
 
 
 class LLMConfig(BaseModel):
-    endpoint: str = ""
+    # "openai" (OpenAI-compatible /chat/completions) or "anthropic" (Claude Messages API)
+    provider: str = "openai"
+    endpoint: str = ""  # base URL; for anthropic this is e.g. https://api.anthropic.com
     model: str = ""
     api_key: str = ""
     temperature: float = 0.0
     max_tokens: int = 1024
     timeout_s: float = 60.0
+    # Anthropic-specific:
+    anthropic_version: str = "2023-06-01"
+    # Current Claude models reject `temperature` (HTTP 400); keep this False for them.
+    send_temperature: bool = False
 
 
 class ArcadeConfig(BaseModel):
@@ -161,6 +167,36 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return out
 
 
+def load_dotenv(path: str | os.PathLike[str]) -> None:
+    """Load ``KEY=VALUE`` lines from a .env file into os.environ.
+
+    Existing environment variables are never overridden (real env wins over the
+    file), matching standard dotenv semantics. Silently ignores a missing file.
+    """
+    p = Path(path)
+    if not p.exists():
+        return
+    for raw in p.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):]
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
+
+
+def _autoload_dotenv() -> None:
+    # Repo-root .env first, then a cwd .env (cwd cannot override already-set keys).
+    load_dotenv(_REPO_ROOT / ".env")
+    cwd_env = Path.cwd() / ".env"
+    if cwd_env.resolve() != (_REPO_ROOT / ".env").resolve():
+        load_dotenv(cwd_env)
+
+
 def load_yaml(path: str | os.PathLike[str]) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as fh:
         data = yaml.safe_load(fh) or {}
@@ -174,6 +210,7 @@ def load_config(
     *,
     overrides: dict[str, Any] | None = None,
     interpolate_env: bool = True,
+    use_dotenv: bool = True,
 ) -> AppConfig:
     """Load configuration.
 
@@ -186,6 +223,8 @@ def load_config(
     interpolate_env:
         Whether to substitute ``${VAR}`` tokens from the environment.
     """
+    if use_dotenv and interpolate_env:
+        _autoload_dotenv()
     data: dict[str, Any] = {}
     if DEFAULT_CONFIG_PATH.exists():
         data = load_yaml(DEFAULT_CONFIG_PATH)
@@ -212,5 +251,6 @@ __all__ = [
     "PipelineConfig",
     "load_config",
     "load_yaml",
+    "load_dotenv",
     "DEFAULT_CONFIG_PATH",
 ]

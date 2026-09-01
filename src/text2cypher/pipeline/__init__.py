@@ -19,8 +19,8 @@ def build_pipeline(config: AppConfig | None = None) -> Pipeline:
     Raises :class:`~text2cypher.clients.base.ConfigurationError` if the read-only
     ArcadeDB credential (or other required setting) is missing.
     """
+    from ..clients import build_llm
     from ..clients.arcadedb import ArcadeDBClient
-    from ..clients.llm import OpenAIChatClient
     from ..clients.mongodb import build_document_store
     from ..clients.qdrant import QdrantClient
     from ..embeddings import build_embedder
@@ -31,7 +31,7 @@ def build_pipeline(config: AppConfig | None = None) -> Pipeline:
     graph_config = load_graph_config(config.resolve_path(config.graph_config_path))
     graph_client = ArcadeDBClient.from_config(config.arcadedb)
     vector_store = QdrantClient.from_config(config.qdrant)
-    llm = OpenAIChatClient.from_config(config.llm)
+    llm = build_llm(config.llm)
     doc_store = build_document_store(config.mongodb)
 
     schema_provider = SchemaProvider(graph_config, graph_client, ttl_s=config.schema_cache.ttl_s)

@@ -71,9 +71,34 @@ t2c examples add | list | import pairs.jsonl
 t2c eval --gold gold.jsonl                 # execution-accuracy eval, per stratum
 ```
 
-Point at real services with environment variables (see `config/default.yaml`):
-`LLM_ENDPOINT`, `LLM_MODEL`, `ARCADE_URL`, `ARCADE_RO_USER`, `ARCADE_RO_PASSWORD`,
-`QDRANT_URL`, …
+Point at real services with environment variables. Copy the sample env file and
+fill it in — the CLI/pipeline auto-loads `.env` from the repo root (real
+environment variables still win over the file):
+
+```bash
+cp .env.example .env    # then edit, then:
+t2c ask "which drugs treat type 2 diabetes?"
+```
+
+### LLM provider
+
+The Generator supports two providers, selected by `LLM_PROVIDER`:
+
+- **`anthropic`** — native Claude Messages API. Set a **custom base URL, model,
+  and API key**:
+  ```bash
+  LLM_PROVIDER=anthropic
+  LLM_ENDPOINT=https://api.anthropic.com     # or any Anthropic-compatible proxy
+  LLM_MODEL=claude-sonnet-5                  # any Claude model id
+  LLM_API_KEY=sk-ant-...
+  ```
+  Current Claude models reject `temperature` (HTTP 400), so it is not sent;
+  determinism comes from the pipeline's validation + repair, not sampling.
+- **`openai`** — any OpenAI-compatible `/chat/completions` endpoint
+  (`LLM_ENDPOINT=https://api.openai.com/v1`, `LLM_MODEL=gpt-4o`, `LLM_API_KEY=…`).
+
+Other services: `ARCADE_URL`, `ARCADE_RO_USER`, `ARCADE_RO_PASSWORD`,
+`QDRANT_URL`, `EMBED_PROVIDER`, … — see `config/default.yaml` and `.env.example`.
 
 ## Configuration
 

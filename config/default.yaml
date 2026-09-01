@@ -2,12 +2,16 @@
 # ${VAR} / ${VAR:-default} tokens are interpolated from the environment at load.
 
 llm:
-  endpoint: ${LLM_ENDPOINT:-}          # OpenAI-compatible /chat/completions base URL
+  provider: ${LLM_PROVIDER:-openai}    # "openai" (OpenAI-compatible) or "anthropic" (Claude Messages API)
+  endpoint: ${LLM_ENDPOINT:-}          # base URL. openai: .../v1 ; anthropic: https://api.anthropic.com
   model: ${LLM_MODEL:-}
   api_key: ${LLM_API_KEY:-}
   temperature: 0.0
-  max_tokens: 1024
+  max_tokens: ${LLM_MAX_TOKENS:-4096}
   timeout_s: 60
+  anthropic_version: "2023-06-01"
+  # Current Claude models reject `temperature` (HTTP 400); leave false for them.
+  send_temperature: ${LLM_SEND_TEMPERATURE:-false}
 
 arcadedb:
   url: ${ARCADE_URL:-}
