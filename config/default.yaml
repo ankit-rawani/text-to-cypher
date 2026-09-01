@@ -24,8 +24,8 @@ arcadedb:
 qdrant:
   url: ${QDRANT_URL:-}
   api_key: ${QDRANT_API_KEY:-}
-  node_collection: concepts
-  example_collection: t2c_examples
+  node_collection: ${QDRANT_NODE_COLLECTION:-concepts}
+  example_collection: ${QDRANT_EXAMPLE_COLLECTION:-t2c_examples}
   timeout_s: 15
 
 mongodb:
@@ -61,7 +61,7 @@ dialect:
   denylist_path: config/arcade_denylist.yaml
 
 # User-configured graph schema (node/edge kinds, statuses, attributes).
-graph_config_path: config/graph_config.yaml
+graph_config_path: ${GRAPH_CONFIG_PATH:-config/graph_config.yaml}
 
 pipeline:
   max_attempts: 3

@@ -1,0 +1,73 @@
+# GraphConfig for the open-nb-worms ArcadeDB `worms` database, scoped to the
+# concept graph (graph = "disgust-mollusca"). Mirrors what is actually queryable
+# in ArcadeDB: a single `Node` vertex type discriminated by `kind`, and one edge
+# type per relation. Concept nodes/edges carry only the props projected into
+# ArcadeDB (name/kind/graph on nodes; kind/confidence/status/graph on edges).
+
+database: worms
+
+node_labels:
+  - Node
+
+node_type_property: kind
+node_type_values:
+  - Entity
+  - Property
+  - Process
+  - Phenomenon
+  - Method
+  - Model
+  - Taxon
+
+node_properties:
+  id: string
+  name: string
+  kind: string
+  graph: string
+
+relationships:
+  - type: causes
+    description: A causes B (causal influence)
+  - type: enables
+    description: A makes B possible
+  - type: inhibits
+    description: A suppresses B
+  - type: increases
+    description: A raises the level/rate of B
+  - type: reduces
+    description: A lowers the level/rate of B
+  - type: requires
+    description: A depends on B
+  - type: is_component_of
+    description: A is a part/member of B
+  - type: measures
+    description: method A measures B
+  - type: contradicts
+    description: A is in tension with B
+  - type: analogous_to
+    description: A is analogous to B
+    directed: false
+  - type: related_to
+    description: generic association
+    directed: false
+  - type: parent_of
+    description: taxonomic parent -> child (Taxon nodes)
+
+edge_properties:
+  kind: string
+  confidence: float
+  status: string
+  graph: string
+
+status_property: status
+status_values:
+  - hypothesized
+  - emerging
+  - established
+
+descriptions:
+  Node: >-
+    A concept or taxon. The `kind` property discriminates:
+    Entity/Property/Process/Phenomenon/Method/Model are concept nodes
+    (graph = 'disgust-mollusca'); Taxon nodes are the WoRMS taxonomy backbone.
+    Match entities on the `name` property.
