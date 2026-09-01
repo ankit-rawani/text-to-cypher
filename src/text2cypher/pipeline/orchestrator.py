@@ -294,4 +294,42 @@ def _first_reject(report: ValidationReport) -> str:
     return "validation failed"
 
 
-__all__ = ["Pipeline"]
+class MultiGraphPipeline:
+    """Route each request to one of several named, pre-built pipelines.
+
+    Each named pipeline can target a different GraphConfig (and database /
+    grounding collection). Build them once, switch per call::
+
+        mgp = MultiGraphPipeline({"concepts": p1, "taxonomy": p2}, default="concepts")
+        mgp.answer(QueryRequest(question="..."))                 # -> default graph
+        mgp.answer(QueryRequest(question="..."), graph="taxonomy")
+    """
+
+    def __init__(self, pipelines: dict[str, Pipeline], default: str | None = None) -> None:
+        if not pipelines:
+            raise ValueError("MultiGraphPipeline requires at least one pipeline")
+        self._pipelines = dict(pipelines)
+        self._default = default or next(iter(self._pipelines))
+        if self._default not in self._pipelines:
+            raise KeyError(f"default graph {self._default!r} not in {list(self._pipelines)}")
+
+    @property
+    def graphs(self) -> list[str]:
+        return list(self._pipelines)
+
+    @property
+    def default(self) -> str:
+        return self._default
+
+    def pipeline(self, graph: str | None = None) -> Pipeline:
+        name = graph or self._default
+        try:
+            return self._pipelines[name]
+        except KeyError:
+            raise KeyError(f"unknown graph {name!r}; known graphs: {list(self._pipelines)}") from None
+
+    def answer(self, request: QueryRequest, graph: str | None = None) -> PipelineResponse:
+        return self.pipeline(graph).answer(request)
+
+
+__all__ = ["Pipeline", "MultiGraphPipeline"]
