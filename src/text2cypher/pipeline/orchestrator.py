@@ -17,6 +17,7 @@ from ..contracts import (
     QueryRequest,
     ValidationReport,
 )
+from ..cypher import analyze
 from .entity_grounder import EntityGrounder
 from .example_store import ExampleStore
 from .executor import Executor
@@ -186,30 +187,43 @@ class Pipeline:
     ) -> PipelineResponse:
         # The single relaxation counts as a generation and respects the caller's
         # effective attempt budget (and the hard cap).
-        can_relax = allow_relax and (attempt_no + 1) <= min(max_attempts, self._hard_max)
-        relax_attempt, relax_error = (None, None)
+        grounded_names = set(grounding.params.keys())
+        # Guard 1: relaxation only makes sense when there is a grounded entity to
+        # anchor it. With nothing grounded, an empty result usually means the
+        # question is out-of-graph — relaxing would just widen into an arbitrary
+        # full scan and report it as `ok`, so return `empty` instead.
+        can_relax = (
+            allow_relax
+            and bool(grounded_names)
+            and (attempt_no + 1) <= min(max_attempts, self._hard_max)
+        )
         if can_relax:
             relax_attempt, relax_error = self._call_generator(
                 lambda: self._generator.relax(question, schema, grounding, examples, empty_cypher, attempt_no + 1),
                 attempt_no + 1, "relax",
             )
             attempts.append(relax_attempt)
-        if relax_attempt is not None and relax_error is None:
-            report = self._validator.validate(
-                relax_attempt.cypher, relax_attempt.params, schema, grounding, row_cap=row_cap
-            )
-            validations.append(report)
-            if report.passed:
-                execution = self._executor.execute(
-                    report.final_cypher, relax_attempt.params, row_cap=row_cap, timeout_s=timeout
+            if relax_error is None:
+                report = self._validator.validate(
+                    relax_attempt.cypher, relax_attempt.params, schema, grounding, row_cap=row_cap
                 )
-                executions.append(execution)
-                if execution.status == "ok":
-                    return self._response(
-                        "ok", execution.rows, report.final_cypher, relax_attempt.params,
-                        attempts, validations, executions, grounding, trace_id,
-                        message=f"{execution.row_count} row(s) after one relaxation.",
+                validations.append(report)
+                # Guard 2: a legitimate relaxation loosens filters AROUND the
+                # grounded entities — it must still bind at least one grounded
+                # $param. One that drops the anchor (e.g. `MATCH (n) RETURN n
+                # LIMIT k`) is a degenerate scan; reject it rather than surface
+                # arbitrary rows as a successful answer.
+                if report.passed and self._relaxation_anchored(report.final_cypher, grounded_names):
+                    execution = self._executor.execute(
+                        report.final_cypher, relax_attempt.params, row_cap=row_cap, timeout_s=timeout
                     )
+                    executions.append(execution)
+                    if execution.status == "ok":
+                        return self._response(
+                            "ok", execution.rows, report.final_cypher, relax_attempt.params,
+                            attempts, validations, executions, grounding, trace_id,
+                            message=f"{execution.row_count} row(s) after one relaxation.",
+                        )
 
         return self._response(
             "empty", [], empty_cypher, empty_params,
@@ -217,8 +231,21 @@ class Pipeline:
             message=self._empty_message(grounding),
         )
 
+    @staticmethod
+    def _relaxation_anchored(cypher: str, grounded_names: set[str]) -> bool:
+        """True if a relaxed query still binds at least one grounded entity param."""
+        if not grounded_names:
+            return False
+        try:
+            referenced = set(analyze(cypher).params)
+        except Exception:
+            return False
+        return bool(referenced & grounded_names)
+
     def _empty_message(self, grounding: GroundingResult) -> str:
         parts = ["Query executed successfully but returned 0 rows."]
+        if not grounding.entities:
+            parts.append("No entities from the question were confidently grounded in the graph.")
         ambiguous = [e.mention for e in grounding.entities if e.ambiguous]
         low = [
             e.mention

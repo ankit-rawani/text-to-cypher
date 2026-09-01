@@ -6,6 +6,12 @@ import pytest
 
 from text2cypher.testing import build_fake_pipeline, gen_json  # noqa: F401 (re-export)
 
+
+@pytest.fixture(autouse=True)
+def _hermetic_config(monkeypatch):
+    """Keep tests independent of any developer's local `.env` — never autoload it."""
+    monkeypatch.setattr("text2cypher.config._autoload_dotenv", lambda: None)
+
 SAMPLE_NODES = [
     {
         "node_id": "n1",

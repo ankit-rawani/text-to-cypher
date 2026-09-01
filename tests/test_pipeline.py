@@ -74,6 +74,38 @@ def test_exhausted_attempts_failed(make_pipeline):
     assert fp.graph.executed == []  # never executed a denylisted query
 
 
+def test_empty_no_grounding_skips_relaxation():
+    # Out-of-graph question grounds nothing -> must NOT relax into an arbitrary
+    # full scan; return `empty` without a relaxation attempt.
+    empty = gen_json("MATCH (n:Concept) WHERE n.canonical_name = 'X' RETURN n.canonical_name AS name")
+    fp = build_fake_pipeline(nodes=[], llm_responses=[empty, empty])
+    fp.graph.set_default([])
+    resp = fp.answer(QueryRequest(question="what is the capital of france", max_attempts=3))
+    assert resp.status == "empty"
+    assert [a.kind for a in resp.attempts].count("relax") == 0
+    assert len(resp.executions) == 1
+    assert "grounded" in resp.message.lower()
+
+
+def test_relaxation_dropping_anchor_rejected():
+    # A relaxation that drops the grounded entity ($metformin) into a bare scan
+    # must be rejected (not executed, not reported ok), even though it would
+    # return rows.
+    empty = gen_json("MATCH (c:Concept) WHERE c.canonical_name = $metformin RETURN c.canonical_name AS name")
+    degenerate = gen_json("MATCH (c:Concept) RETURN c.canonical_name AS name")
+    fp = build_fake_pipeline(
+        nodes=[{"node_id": "n2", "canonical_name": "Metformin", "node_type": "Drug", "aliases": []}],
+        llm_responses=[empty, degenerate], grounding_threshold=0.2,
+    )
+    fp.graph.add_rule(lambda c, p: "WHERE" in c, lambda c, p: [])
+    fp.graph.add_rule(lambda c, p: "WHERE" not in c, lambda c, p: [{"name": "Metformin"}])
+    resp = fp.answer(QueryRequest(question="show metformin", max_attempts=3))
+    assert resp.status == "empty"
+    assert [a.kind for a in resp.attempts].count("relax") == 1  # relaxation WAS generated
+    assert len(fp.graph.executed) == 1  # ...but the anchorless scan never executed
+    assert "WHERE" in fp.graph.executed[0][0]
+
+
 def test_full_trace_always_present(make_pipeline):
     fp = make_pipeline(llm_responses=[gen_json(TREATS)])
     fp.graph.when("TREATS", [{"drug": "Metformin"}])
