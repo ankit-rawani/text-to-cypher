@@ -9,9 +9,10 @@ and the same `worms` ArcadeDB, so the comparison isolates the *approach*.
 - Approach B ("pipeline"): text2cypher (vector grounding -> $params, AST
   validator, LIMIT autofix, repair loop, empty-branch).
 
-Grading: value-based, projection-tolerant, against a hand-written reference
-query. Verdicts: EXACT (matches gold), SUPERSET (all gold rows + extras — e.g.
-CONTAINS over-matching), WRONG (missing rows / error / rows for out-of-graph).
+Grading is STRICT: only EXACT (same row set as the reference, tolerating extra
+projected columns) counts as correct. SUPERSET (all reference rows plus extras —
+e.g. CONTAINS over-matching) and WRONG (missing rows / error / rows for
+out-of-graph) are reported but NOT counted as correct.
 
     python scripts/compare_notebook_vs_pipeline.py
 """
@@ -207,12 +208,13 @@ def main():
 
     print("\n" + "#" * 80)
     n = len(GRADED)
+    # STRICT grading: only EXACT counts as correct. SUPERSET (over-matching,
+    # e.g. CONTAINS returning extra rows) is reported but NOT counted.
     for name in ("notebook", "pipeline"):
         t = tallies[name]
-        good = t["EXACT"] + t["SUPERSET"]
         lats = sorted(lat[name])
-        print(f"{name:<9}  EXACT={t['EXACT']}  SUPERSET={t['SUPERSET']}  WRONG={t['WRONG']}  "
-              f"| correct(EXACT+SUPERSET)={good}/{n}  | latency p50={lats[len(lats)//2]:.0f}ms")
+        print(f"{name:<9}  correct(EXACT)={t['EXACT']}/{n}  | SUPERSET(over-match, not counted)={t['SUPERSET']}"
+              f"  WRONG={t['WRONG']}  | latency p50={lats[len(lats)//2]:.0f}ms")
 
 
 if __name__ == "__main__":
