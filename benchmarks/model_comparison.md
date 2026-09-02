@@ -1,79 +1,87 @@
-# NL→Cypher: notebook method vs. text2cypher pipeline
+# NL→Cypher benchmark — gpt-5.6-luna (strict grading)
 
-Head-to-head on the **same LLM gateway, same graph, same questions** — the only
-variable is the *approach*.
+Scope: **`gpt-5.6-luna` only** (via the gateway's OpenAI-compatible `/v1` path),
+against the ArcadeDB `worms` graph, `disgust-mollusca` concept subgraph (240
+nodes / 271 edges; 6 node kinds, 10 edge types), offline `hashing` embedder for
+grounding.
 
-- **Approach A — "notebook"**: a faithful port of
-  `open-nb-worms/notebooks/nl_to_cypher_experiments.ipynb` — a schema-grounded
-  system prompt, model-driven `toLower(name) CONTAINS` matching, a regex
-  read-only check, and one self-repair pass. Its OpenRouter call is replaced by
-  the same gateway model used by the pipeline (fair, model-controlled).
-- **Approach B — "pipeline"**: the text2cypher pipeline — vector grounding →
-  bound `$params`, an AST validator (write-block, denylist, schema check,
-  unbound-param check, direction & LIMIT autofix), a capped repair loop, and the
-  empty-result branch.
+> **Grading is STRICT.** Only **EXACT** — the predicted result set equals the
+> hand-written reference (extra *projected columns* tolerated, same rows) —
+> counts as correct. **SUPERSET** (all reference rows **plus extras**, e.g.
+> `CONTAINS` over-matching or a broader-but-defensible reading) and **WRONG**
+> (missing rows / error / rows for an out-of-graph question) are reported but
+> **not** counted. Open-ended discovery prompts with no single right answer are
+> **INSPECT** (query + rows shown, judged by hand).
+>
+> An earlier multi-model table here counted `EXACT+SUPERSET` as "correct", which
+> over-credited over-matching queries; it has been removed. These numbers use the
+> strict grader.
 
-**Setup**: gateway `https://api.servicesessentials.ibm.com`; ArcadeDB `worms`
-graph, `disgust-mollusca` concept subgraph (240 nodes / 271 edges, 6 node kinds,
-10 edge types); offline `hashing` embedder for grounding; 13 graded questions
-across strata (1-hop, alias-phrased, multi-hop, filtered, relation, aggregation,
-out-of-graph). Reproduce: `python scripts/compare_notebook_vs_pipeline.py`
-(override the model with `LLM_PROVIDER=openai LLM_MODEL=<id>`).
+Reproduce:
+```bash
+LLM_PROVIDER=openai LLM_ENDPOINT=https://api.servicesessentials.ibm.com/v1 LLM_MODEL=gpt-5.6-luna \
+  python scripts/compare_notebook_vs_pipeline.py     # notebook method vs pipeline
+LLM_PROVIDER=openai LLM_ENDPOINT=https://api.servicesessentials.ibm.com/v1 LLM_MODEL=gpt-5.6-luna \
+  python scripts/researcher_gap_session.py           # researcher gap-discovery scenarios
+```
 
-**Grading** is value-based and projection-tolerant against a hand-written
-reference query: `EXACT` = matches the reference set; `SUPERSET` = contains all
-reference rows plus extras (e.g. `CONTAINS` over-matching); `WRONG` = missing
-rows / error / rows for an out-of-graph question. "Correct" = EXACT + SUPERSET.
+## 1. Notebook method vs. text2cypher pipeline (13 questions)
 
-## Results (correct / 13)
+| Approach | EXACT (correct) | SUPERSET (not counted) | WRONG |
+|---|---:|---:|---:|
+| notebook (ported to the gateway) | 12/13 | 1 | 0 |
+| text2cypher pipeline | 12/13 | 0 | 1 |
 
-| Model | Tier | Notebook | Pipeline |
-|---|---|---:|---:|
-| `claude-sonnet-5` | frontier | 13 | **13** |
-| `gpt-5.6-luna` | frontier (reasoning) | 12\* | 12\* |
-| `gemini-3.7-flash` | small/fast | 12 | **13** |
-| `gemma-4-26b-a4b-it` | small (MoE) | 7 | **13** |
-| `claude-haiku-4-5` | small | 11 | **13** |
-| `meta-llama/llama-4-maverick-17b` | small (MoE) | 7 | **11** |
-| `ibm/granite-4-h-small` | very small | 5 | **7** |
+Both land at 12/13 EXACT. The pipeline's one non-EXACT is Q "top-3 by
+out-degree": a genuine **3-way tie at degree 6** where each side returns a valid
+but different third node — a boundary-tie artifact, not a wrong answer. The
+notebook's 1 SUPERSET is `CONTAINS` over-matching, now (correctly) not counted.
+Net: on a strong model the two are even on accuracy; the pipeline's edge is
+precision (exact `$param` matching vs fuzzy `CONTAINS`) and its guarantees
+(read-only validator, bound params, full trace).
 
-\* On `gpt-5.6-luna` the single non-match for both is Q10 ("top-3 by out-degree"):
-a genuine 3-way tie at degree 6, where each side returns a valid — but
-different — third node. A grading artifact, not a miss.
+## 2. Researcher gap-discovery scenarios (23 prompts: 14 graded, 9 open)
 
-## Findings
+Strict: **EXACT 10/14**, SUPERSET 2 (not counted), WRONG 2, INSPECT 9.
 
-1. **The pipeline meets or beats the notebook method on every model**, and the
-   margin widens as the model weakens — evidence for the design thesis that
-   accuracy should come from the pipeline, not just the model.
-2. **On strong models it's a near-tie on accuracy**; the pipeline's edge is
-   *precision* — exact `$param` matching returns exactly the right set, whereas
-   the notebook's `CONTAINS` occasionally over-matches (SUPERSET).
-3. **On weaker models the pipeline's structure prevents failures** the notebook
-   hits: `CONTAINS` matching the wrong surface form (e.g. "morph frequency" vs
-   "morph frequenc*ies*"), and putting an edge attribute (`status`) on a node.
-   Vector grounding + AST schema-validation catch these.
-4. **Two pipeline bugs were found via the weak-model runs and fixed** (on `main`):
-   - grounding over-grounded generic words ("relationships", "type") into
-     spurious `$params` that weak models then filtered on — now dropped;
-   - a query referencing an unbound `$param` failed opaquely at the DB — the
-     validator now rejects it with a clear, repairable message.
-   Verified on `granite-4-h-small`: the two questions it previously got wrong for
-   these reasons now return correct results on the first attempt.
+**What the pipeline expressed correctly** (EXACT / sensible INSPECT):
+- Structural gaps: isolated concepts (`NOT (n)--()`), unexplained phenomena
+  (rewrote the unsupported anonymous-start negation as an `OPTIONAL MATCH …
+  count(r)=0` anti-join), idle methods, least-represented kind, most-contested
+  concept, hubs, candidate missing links (`NOT (a)--(b)`), sink entities.
+- Aggregation: avg confidence by status, kind participating in most relationships.
+- Connectivity: Cepaea↔climate (correctly empty), Alzheimer's out-of-graph
+  (correctly empty) — no hallucinated rows.
 
-## Caveats (eval methodology, not pipeline behavior)
+**Not counted, with honest cause (none are pipeline bugs):**
+- SUPERSET Q1 "hypothesized causal claims" and Q9 "processes with no downstream
+  effects": the model broadened "causal"/"downstream" to all effect-type edges
+  (`causes|enables|inhibits|increases|reduces`) vs the reference's narrower
+  definition. Defensible readings, but supersets → not counted.
+- WRONG Q2 "what findings have been refuted?": the graph has **both** a
+  `contradicts` edge type **and** a `refuted` status; the model read "refuted" as
+  `contradicts`, the reference as `status='refuted'`. Genuine NL ambiguity.
+- WRONG Q3 "established effects of alien species": the model kept
+  `status='established'` but restricted to causal edge types (1 row); the
+  reference counted every established edge incl. `is_component_of` (6). Partly an
+  over-broad reference.
 
-- **Boundary ties**: `top-N` over tied values makes exact-set matching brittle
-  (Q10). Both approaches return valid-but-different members of the tie.
-- **Map projections**: a model that returns `RETURN {a:…, b:…}` (one map column)
-  instead of flat columns is semantically correct but the value-grader can't
-  unwrap it — counts as WRONG on the weakest models.
-- **Offline embedder**: the `hashing` embedder dilutes short aliases against long
-  node text; a real embedding model grounds those better. (The `worms` concept
-  nodes have short names, so grounding is strong there.)
+**One real bug this run surfaced — and fixed (on `main`):**
+- Q21 "what contradictions exist in the current understanding?" first came back
+  WRONG: grounding matched the meta word **"contradictions" → an unrelated node**
+  ("monitoring and conservation actions") at a borderline **0.55**, which luna
+  then filtered on. Fix: drop research/query meta words from grounding
+  (commit `5d335e4`). After the fix, Q21 is **EXACT** (9 contradictions), taking
+  gap discovery from 9 → **10/14 EXACT**.
 
-## Latency (p50, gateway-bound)
+## Caveats (eval methodology / data, not pipeline behavior)
 
-Frontier: `sonnet-5` ~4 s, `gpt-5.6-luna` ~5 s (reasoning). Small: `haiku-4-5`
-~2 s, `gemini-3.7-flash` ~2.5 s, `granite`/`llama` ~1–4 s; `gemma-4-26b` is a
-reasoning model at ~25–30 s.
+- **Offline embedder**: the `hashing` embedder produces borderline (~0.55)
+  lexical false-matches for short/meta words. A real embedding model, or a higher
+  `grounding.sim_threshold`, is the general mitigation; the meta-word filter
+  handles the common query words.
+- **Boundary ties**: `top-N` over tied values makes exact-set matching brittle.
+- **Map projections**: a `RETURN {a:…,b:…}` (one map column) is semantically
+  correct but the value-grader can't unwrap it → shows as not-EXACT.
+- **"refuted" / "effects"** are genuinely ambiguous against a graph that encodes
+  both edge types and edge statuses.
