@@ -44,6 +44,11 @@ _GENERIC = {
     "process", "processes", "model", "models", "phenomenon", "phenomena",
     "thing", "things", "item", "items", "name", "names", "value", "values",
     "result", "results", "number", "numbers", "pair", "pairs", "group", "groups",
+    # research/query meta words — never domain entities (they otherwise produce
+    # borderline embedder false-matches, e.g. "contradictions" -> some node).
+    "contradiction", "contradictions", "evidence", "finding", "findings",
+    "claim", "claims", "hypothesis", "hypotheses", "understanding", "gap", "gaps",
+    "category", "categories", "chain", "chains", "concept", "concepts",
 }
 _DROP_SINGLE = _STOPWORDS | _GENERIC
 

@@ -26,6 +26,10 @@ def test_generic_single_words_not_extracted():
     m = [x.lower() for x in extract_mentions("How many relationships of each type, and which methods and processes?")]
     for w in ("relationships", "type", "methods", "processes"):
         assert w not in m, w
+    # research/query meta words must not become standalone mentions either
+    m2 = [x.lower() for x in extract_mentions("What contradictions and gaps exist in the current understanding?")]
+    for w in ("contradictions", "gaps", "understanding"):
+        assert w not in m2, w
     # real single-word entities still survive
     assert "metformin" in [x.lower() for x in extract_mentions("Tell me about Metformin")]
 
