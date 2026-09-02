@@ -33,7 +33,10 @@ def test_load_gold(tmp_path):
 
 
 def test_harness_scores_and_strata(sample_nodes):
-    treats = "MATCH (drug:Concept)-[:TREATS]->(d:Concept) WHERE d.canonical_name = $type_2_diabetes_mellitus RETURN drug.canonical_name AS drug"
+    # Param-free on purpose: this test exercises the EVAL HARNESS (scoring /
+    # strata), not entity grounding — so the scripted query must not depend on
+    # the offline embedder producing any particular $param.
+    treats = "MATCH (drug:Concept)-[:TREATS]->(d:Concept) RETURN drug.canonical_name AS drug"
 
     def handler(_msgs):
         return gen_json(treats)
@@ -43,7 +46,7 @@ def test_harness_scores_and_strata(sample_nodes):
     fp.graph.add_rule(lambda c, p: "TREATS" not in c, lambda c, p: [])
 
     gold = [
-        GoldItem(id="ok", stratum="1-hop", question="Which drugs treat Type 2 Diabetes Mellitus?",
+        GoldItem(id="ok", stratum="1-hop", question="drugs for T2DM",
                  cypher="MATCH (drug:Concept)-[:TREATS]->(d:Concept) WHERE d.canonical_name=$n RETURN drug.canonical_name AS drug",
                  params={"n": "Type 2 Diabetes Mellitus"}),
         GoldItem(id="oog", stratum="out-of-graph", question="unrelated",
