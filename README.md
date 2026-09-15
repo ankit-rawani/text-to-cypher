@@ -372,4 +372,6 @@ config/
 scripts/
   setup_worms_grounding.py  # index nodes + seed examples (worked example)
   research_session.py       # graded question harness (worked example)
+data/
+  mollusca-merged/          # WoRMS Mollusca graph + REST enrichment, merged (see its README)
 ```
