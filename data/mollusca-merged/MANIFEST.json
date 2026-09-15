@@ -1,0 +1,278 @@
+{
+  "dataset": "WoRMS Mollusca graph — merged taxonomy + claims graph + WoRMS REST enrichment",
+  "built": "2026-09-15",
+  "builder": "data/mollusca-merged/build_merged.py",
+  "sources": {
+    "kg_package": {
+      "name": "kg_mollusca-data-populate-script.zip",
+      "raw_manifest": {
+        "dataset": "worms-graph store export",
+        "source": {
+          "store": "Postgres (source of truth)",
+          "graph_filter": null,
+          "exported": "2026-08-13"
+        },
+        "counts": {
+          "nodes": 144127,
+          "edges": 144129,
+          "nodes_by_kind": {
+            "Taxon": 143887,
+            "Entity": 94,
+            "Property": 62,
+            "Process": 36,
+            "Phenomenon": 27,
+            "Method": 20,
+            "Model": 1
+          },
+          "edges_by_kind": {
+            "parent_of": 143858,
+            "is_component_of": 74,
+            "enables": 54,
+            "causes": 44,
+            "measures": 28,
+            "requires": 26,
+            "increases": 19,
+            "reduces": 12,
+            "contradicts": 9,
+            "inhibits": 4,
+            "analogous_to": 1
+          },
+          "nodes_by_graph": {
+            "<null>": 143887,
+            "disgust-mollusca": 240
+          }
+        },
+        "files": {
+          "nodes.jsonl.gz": {
+            "bytes": 8965265,
+            "sha256": "aa998cd417f15c46adaddb5737bccb0036bdcdcfc1b46d9a40c6da3277885e61"
+          },
+          "edges.jsonl.gz": {
+            "bytes": 2450265,
+            "sha256": "6ecfe8ff8a9349b2619c70277e96c8adb78accc8e1192a3bf410886b44832e9a"
+          }
+        },
+        "node_schema": "{id,kind,name,description,phylum,graph,props} -> store.upsert_node",
+        "edge_schema": "{id,kind,src,tgt,graph,phylum,attrs} -> store.upsert_edge",
+        "note": "vectors NOT included — run `worms-graph embed` on the remote side."
+      },
+      "files": {
+        "data/raw/nodes.jsonl.gz": {
+          "bytes": 8965265,
+          "sha256": "aa998cd417f15c46adaddb5737bccb0036bdcdcfc1b46d9a40c6da3277885e61"
+        },
+        "data/raw/edges.jsonl.gz": {
+          "bytes": 2450265,
+          "sha256": "6ecfe8ff8a9349b2619c70277e96c8adb78accc8e1192a3bf410886b44832e9a"
+        },
+        "data/clean/clean_worms_nodes.jsonl": {
+          "bytes": 130123930,
+          "sha256": "a276fe32fd3fa264800343a8283637cea89412d9cfd852b8cc6b7ebf542d9382"
+        },
+        "data/clean/clean_worms_edges.jsonl": {
+          "bytes": 24680037,
+          "sha256": "1aeb6b96e4ec160e93f3a1f66dd44f21faaa6ca28944d015c203d6a640ac9863"
+        },
+        "data/clean/concept_nodes.jsonl": {
+          "bytes": 230211,
+          "sha256": "7a85180ae09f13db6885c3553559de9d2bb4c89700e540543b19287526b1fedb"
+        },
+        "data/clean/concept_edges.jsonl": {
+          "bytes": 81103,
+          "sha256": "7d3eca00f68f8be681a564ba498996dc891528a16a7c86d1a3a867d592c47a9c"
+        }
+      }
+    },
+    "enriched": {
+      "name": "worms-enriched-full.tar",
+      "manifest": {
+        "dataset": "worms-graph — enriched Mollusca sample (for testing)",
+        "built": "2026-09-12",
+        "source": {
+          "export": "dist/worms-export",
+          "enrich_cache": "dist/worms-enrich/_cache.sqlite"
+        },
+        "counts": {
+          "nodes": 123059,
+          "induced_edges": 0,
+          "with_vernaculars": 15556,
+          "with_localities": 56918,
+          "with_attributes": 121499,
+          "with_external_ids": 32525
+        },
+        "coverage_pct": {
+          "vernaculars": "15556/123059 (12%)",
+          "localities": "56918/123059 (46%)",
+          "attributes": "121499/123059 (98%)",
+          "external": "32525/123059 (26%)"
+        },
+        "files": {
+          "nodes.jsonl.gz": {
+            "bytes": 12060909,
+            "sha256": "580bd2c18533bc379142050bd6e854560acb8261752073d94b005fe993ad667d"
+          },
+          "edges.jsonl.gz": {
+            "bytes": 37,
+            "sha256": "9047002555900df2aa28d068845b2defbe42df2bba128881425e7bf8975b8798"
+          }
+        },
+        "node_schema": "export node + props.{vernaculars,localities,attributes,external_ids,_enriched}"
+      },
+      "files": {
+        "nodes.jsonl.gz": {
+          "bytes": 12060909,
+          "sha256": "580bd2c18533bc379142050bd6e854560acb8261752073d94b005fe993ad667d"
+        }
+      }
+    }
+  },
+  "merge": {
+    "key": "store node id (enriched nodes are the raw export's Species nodes, same ids); KG nodes joined via metadata.aphia_id -> uuid5('worms:<aphia>')",
+    "enriched_records": 123059,
+    "overlaid_on_raw": 123059,
+    "enriched_not_in_raw": 0,
+    "base_record_mismatches": 0,
+    "duplicate_aphia_stubs_in_store": 25,
+    "kg_uuid_mismatches": 0,
+    "kg_descriptions_truncated_to_5000": 8
+  },
+  "counts": {
+    "store": {
+      "nodes": 144127,
+      "edges": 150280,
+      "nodes_by_kind": {
+        "Taxon": 143887,
+        "Entity": 94,
+        "Property": 62,
+        "Phenomenon": 27,
+        "Method": 20,
+        "Process": 36,
+        "Model": 1
+      },
+      "edges_by_kind": {
+        "causes": 44,
+        "parent_of": 143858,
+        "enables": 54,
+        "is_component_of": 74,
+        "reduces": 12,
+        "contradicts": 9,
+        "inhibits": 4,
+        "requires": 26,
+        "analogous_to": 1,
+        "increases": 19,
+        "measures": 28,
+        "has_host": 6138,
+        "feeds_on": 13
+      },
+      "derived_edges": {
+        "has_host": 6138,
+        "feeds_on": 13
+      },
+      "unresolved_taxon_refs": {
+        "has_host": 6283,
+        "feeds_on": 138
+      }
+    },
+    "kg": {
+      "nodes": 144102,
+      "edges": 150277,
+      "nodes_by_type": {
+        "Species": 123041,
+        "Genus": 16456,
+        "Clade": 1852,
+        "Family": 2241,
+        "Class": 40,
+        "Order": 228,
+        "Entity": 94,
+        "Phylum": 3,
+        "Property": 62,
+        "Phenomenon": 27,
+        "Method": 20,
+        "Process": 36,
+        "Kingdom": 1,
+        "Model": 1
+      },
+      "edges_by_type": {
+        "causes": 44,
+        "parent_of": 143855,
+        "enables": 54,
+        "is_component_of": 74,
+        "reduces": 12,
+        "contradicts": 9,
+        "inhibits": 4,
+        "requires": 26,
+        "analogous_to": 1,
+        "increases": 19,
+        "measures": 28,
+        "has_host": 6138,
+        "feeds_on": 13
+      },
+      "derived_edges": {
+        "has_host": 6138,
+        "feeds_on": 13
+      },
+      "enriched_species": 121633
+    },
+    "documents": {
+      "papers": 389,
+      "papers_with_doi": 63,
+      "papers_with_abstract": 30,
+      "node_texts": 144127
+    }
+  },
+  "coverage": {
+    "species_enriched": "123059/143887 (85%) of all taxa; 123059/123059 (100%) of enriched records",
+    "vernaculars": "15556/123059 (12%)",
+    "localities": "56918/123059 (46%)",
+    "attributes": "121499/123059 (98%)",
+    "external_ids": "32525/123059 (26%)",
+    "no_field_returned": "1408/123059 (1%)"
+  },
+  "schemas": {
+    "store/nodes": "{id,kind,name,description,phylum,graph,props} -> store.upsert_node; enrichment in props.{vernaculars,localities,attributes,external_ids,hosts,food_sources,_enriched,enrichment_source}; legacy rich localities kept as props.localities_detail",
+    "store/edges": "{id,kind,src,tgt,graph,phylum,attrs} -> store.upsert_edge; derived kinds has_host/feeds_on carry attrs.origin='worms-rest-attributes'",
+    "kg/nodes": "{id,title,type,description?,aliases?,metadata,confidence?,evidenceDois?,fieldTags?} (graph-api CreateNodeBody); enrichment as metadata JSON blobs + flattened keys (see vocab/attributes.json kg_metadata_keys)",
+    "kg/edges": "{source,target,type,status,directed,confidence,evidenceDois?,metadata?} (graph-api CreateEdgeBody); new edge types has_host, feeds_on must be registered",
+    "documents/papers": "{id,doi,key,title,year,venue,authors,citation,url,abstract,sources,tags,cited_by[{node_id|edge_id,role}]}",
+    "documents/node_texts": "{node_id,kg_id,canonical_name,node_type,kind,graph,aphia_id,aliases,definition,enriched} — directly consumable by text2cypher.ingest.index_nodes"
+  },
+  "files": {
+    "store/nodes.jsonl.gz": {
+      "bytes": 14884568,
+      "sha256": "704ba597f13a8ca94a000ff657f5a48f8a93fc91f7114c07a8eb51f3c4b1ccf1"
+    },
+    "store/edges.jsonl.gz": {
+      "bytes": 2519357,
+      "sha256": "6a17c75b7453d8f9e7dac912ad9e263648e1953c78548b4969d23444315bf4eb"
+    },
+    "kg/nodes.jsonl.gz": {
+      "bytes": 19305386,
+      "sha256": "88f20b9f86d935ece5af1eda15c771568f28f7ff3e624bfe15cc7dd0be5dc0f8"
+    },
+    "kg/edges.jsonl.gz": {
+      "bytes": 6718788,
+      "sha256": "91f4e4ebdaf4af570f38c2015d872bc5a8df2817858765668328bb65e521b6ff"
+    },
+    "kg/concept_nodes.jsonl.gz": {
+      "bytes": 36009,
+      "sha256": "da6f363022543cbf014b4a135b69fbd8883d4572863679500aacbd99db12f88c"
+    },
+    "kg/concept_edges.jsonl.gz": {
+      "bytes": 8674,
+      "sha256": "0f77f9ef814786e55efa400d5425aae30858677a79bbad68c3a22db5eab4403b"
+    },
+    "documents/papers.jsonl.gz": {
+      "bytes": 62620,
+      "sha256": "250add5effae37c88425c54517c8272e7352258947e1f97202e4076d24a13603"
+    },
+    "documents/node_texts.jsonl.gz": {
+      "bytes": 11313338,
+      "sha256": "b96bbcb419d7a9af3e5b6be472676859733baa3e5a4cbd8404f907b5aba8df6f"
+    },
+    "vocab/attributes.json": {
+      "bytes": 299520,
+      "sha256": "83763c78bbdbc56ec5f09221ffdd353a07a5757ed8e8bbf222a4523f44ecb6d8"
+    }
+  },
+  "build_seconds": 200.3
+}
